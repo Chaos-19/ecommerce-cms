@@ -10,10 +10,13 @@ import {
   EntityReference,
   toSnakeCase,
   useAuthController,
+  useSnackbarController,
 } from "@firecms/core";
 
+import { doc, getDoc, getFirestore, setDoc } from "@firebase/firestore";
+
 const productCallbacks = buildEntityCallbacks({
-  onPreSave: ({
+  onPreSave: async ({
     collection,
     path,
     entityId,
@@ -22,13 +25,32 @@ const productCallbacks = buildEntityCallbacks({
     status,
     context,
   }) => {
-    console.log(values.images);
+    const db = getFirestore();
+
+    if (!context.authController.user?.uid) {
+      throw new Error("User ID is undefined");
+    }
+    const userDocRef = doc(db, "users", context.authController.user.uid);
+    const userDocSnap = await getDoc(userDocRef);
 
     values.images = values?.images?.map(
       (image: { url: string; public_id: string }) => image
     );
 
-    //values.seller_id = context.authController.user?.uid;
+    if (
+      userDocSnap.data()?.role != "super_admin" &&
+      (userDocSnap.data()?.store_name ||
+        userDocSnap.data()?.store_address ||
+        userDocSnap.data()?.contact_number)
+    ) {
+      throw new Error(
+        "Please fill in your store details before adding a product"
+      );
+    } else if (userDocSnap.data()?.role != "super_admin") {
+      values.status = "Pending";
+    }
+
+    values.seller_id = context.authController.user.uid;
 
     return values;
   },
@@ -48,8 +70,7 @@ const productCallbacks = buildEntityCallbacks({
     entity,
     context,
   }: EntityOnDeleteProps<Product>) => {
-    if (context.authController.user)
-      throw Error("Product deletion not allowed");
+    console.log("");
   },
 
   onDelete: (props: EntityOnDeleteProps<Product>) => {
@@ -58,8 +79,6 @@ const productCallbacks = buildEntityCallbacks({
 
   onFetch({ collection, context, entity, path }: EntityOnFetchProps) {
     //entity.values.name = "Forced name";
-
-  
 
     return entity;
   },
@@ -72,8 +91,6 @@ const productCallbacks = buildEntityCallbacks({
     values,
   }: EntityIdUpdateProps): string {
     // return the desired ID
-
-
 
     return toSnakeCase(values?.name);
   },
@@ -140,13 +157,16 @@ export const productsCollection = buildCollection<Product>({
 
     return {
       read: true,
-      edit: isAdmin,
+      edit:
+        authController?.extra?.role == "super_admin" ||
+        (authController.user &&
+          entity?.values?.seller_id === authController.user?.uid) ||
+        false,
       create: true,
       delete:
+        authController?.extra?.role == "super_admin" ||
         (authController.user &&
-          "extra" in authController.user &&
-          (authController.user.extra as { role: string }).role ===
-            "super_admin") ||
+          entity?.values?.seller_id === authController.user?.uid) ||
         false,
     };
   },
@@ -166,23 +186,20 @@ export const productsCollection = buildCollection<Product>({
       description: "Price with range validation",
       dataType: "number",
     },
-    status: () => {
-      return {
-        name: "Status",
-        //validation: { required: true },
-        dataType: "string",
-        defaultValue: "Pending",
-        disabled: true,
-        description: "Should this product be visible on the website",
-        longDescription:
-          "Example of a long description hidden under a tooltip. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Proin quis bibendum turpis. Sed scelerisque ligula nec nisi pellentesque, eget viverra lorem facilisis. Praesent a lectus ac ipsum tincidunt posuere vitae non risus. In eu feugiat massa. Sed eu est non velit facilisis facilisis vitae eget ante. Nunc ut malesuada erat. Nullam sagittis bibendum porta. Maecenas vitae interdum sapien, risus. Donec finibus aliquet bibendum, tellus dui porttitor quam, quis pellentesque tellus libero non urna. Vestibulum maximus pharetra congue. Suspendisse aliquam congue quam, sed bibendum turpis. Aliquam eu enim ligula. Nam vel magna ut urna cursus sagittis. Suspendisse a nisi ac justo ornare tempor vel eu eros.",
-        enumValues: {
-          pending: "Pending",
-          approved: "Approved",
-          rejected: "Rejected",
-        },
-    
-      };
+    status: {
+      name: "Status",
+      //validation: { required: true },
+      dataType: "string",
+      defaultValue: "Pending",
+      //disabled: true,
+      description: "Should this product be visible on the website",
+      longDescription:
+        "Example of a long description hidden under a tooltip. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Proin quis bibendum turpis. Sed scelerisque ligula nec nisi pellentesque, eget viverra lorem facilisis. Praesent a lectus ac ipsum tincidunt posuere vitae non risus. In eu feugiat massa. Sed eu est non velit facilisis facilisis vitae eget ante. Nunc ut malesuada erat. Nullam sagittis bibendum porta. Maecenas vitae interdum sapien, risus. Donec finibus aliquet bibendum, tellus dui porttitor quam, quis pellentesque tellus libero non urna. Vestibulum maximus pharetra congue. Suspendisse aliquam congue quam, sed bibendum turpis. Aliquam eu enim ligula. Nam vel magna ut urna cursus sagittis. Suspendisse a nisi ac justo ornare tempor vel eu eros.",
+      enumValues: {
+        pending: "Pending",
+        approved: "Approved",
+        rejected: "Rejected",
+      },
     },
     // Custom property for multiple images
     images: buildProperty({

@@ -20,30 +20,15 @@ export const usersCollection = buildCollection<User>({
   icon: "Person",
   group: "User Management",
 
-  permissions: ({ authController, user }) => ({
+  permissions: ({ authController, user ,entity}) => ({
     read:
-      (authController.user &&
-        "extra" in authController.user &&
-        (authController.user.extra as { role: string }).role ===
-          "super_admin") ||
-      false,
+      true,
     create:
-      (authController.user &&
-        "extra" in authController.user &&
-        (authController.user.extra as { role: string }).role ===
-          "super_admin") ||
+    authController?.extra?.role == "super_admin" ||
       false,
-    edit:
-      (authController.user &&
-        "extra" in authController.user &&
-        (authController.user.extra as { role: string }).role ===
-          "super_admin") ||
-      false,
+    edit: user?.uid === authController.user?.uid ,
     delete:
-      (authController.user &&
-        "extra" in authController.user &&
-        (authController.user.extra as { role: string }).role ===
-          "super_admin") ||
+     authController?.extra?.role == "super_admin" ||
       false,
   }),
   properties: {
